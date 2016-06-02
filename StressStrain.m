@@ -1,4 +1,4 @@
-function [Modulus,ModulusCI,Strain,Stress,ModEqn] = StressStrain(userstrain,plotctrl)
+function [Modulus,ModulusCI,Strain,Stress,ModEqn,ModGOF] = StressStrain(userstrain,plotctrl)
 % StressStrain.m
 % This function collects data from various sources to analyze the
 % experimental mechanical properties of snow.  Load data is collected from
@@ -18,7 +18,7 @@ function [Modulus,ModulusCI,Strain,Stress,ModEqn] = StressStrain(userstrain,plot
 %               'epsxy' - Shear Strain
 %               'major' - Major Strain
 %               'minor' - Minor strain
-%       
+%
 %           plotctrl: Controls which plots display.  Paramters are as
 %           follows:
 %               0: No Plots
@@ -30,7 +30,7 @@ function [Modulus,ModulusCI,Strain,Stress,ModEqn] = StressStrain(userstrain,plot
 % OUTPUS:
 %           Modulus - The slope of the stress strain curve during the
 %           linear elastic portion of loading.
-%               Ex: 
+%               Ex:
 %               -If using epsxy, this would be the shear modulus in (Pa)
 %               -If using Major/Minor strain, this would be Young's modulus
 %               in the direction of the respective strain (Pa)
@@ -49,20 +49,28 @@ function [Modulus,ModulusCI,Strain,Stress,ModEqn] = StressStrain(userstrain,plot
 %
 % VERSION: 1.0
 % DATE: May 29, 2014
+%
+% VERSION: 1.5 - Date: December 7, 2015: Added compressive strain
+% functionality
 % AUTHOR: David J Walters; Montana State University
 
 %% Set Plot Controls
 ebwidth = 0.1;  % Errorbar cap width
 font = 'Palatino Linotype';
-fsize = 11;
-msize = 5;
+fsize = 10;
+msize = 10;
 %% Import Labview load data using subfunction
 [Time,TriggerTime,~,Load,LVDT,LocalPath] = LabviewLoad;
 
 %% Import ARAMIS strain data using subfunction
 [Stage,Timems,major,minor,epsX,epsY,epsXY,d_xum,d_yum] = ARAMIS(LocalPath);
 assignin('base','Timems',Timems)
-Cutoff = Time(find(Load==max(Load),1))+0.5
+Cutoff = Time(find(Load==max(Load),1))
+if max(Timems{1}) < 1000
+    for i = 1:length(Timems)
+    Timems{i} = Timems{i} * 1000;
+    end
+end
 for i = 1:length(Timems)
     for j = 1:length(Timems{i})
         if Timems{i}(j)/1000 > Cutoff
@@ -79,7 +87,9 @@ for i = 1:length(Timems)
         end
     end
 end
-
+assignin('base','epsY',epsY)
+assignin('base','minor',minor)
+assignin('base','epsXY',epsXY)
 %% Manipulate Data
 % Mesh data from different sources so they match
 % Labview records data at 1,000 Hz whereas ARAMIS records data at 15 Hz
@@ -104,48 +114,127 @@ switch userstrain
         MaxStrain = -meanEpsXY(maxIndex);
         exclusions = excludedata(-meanEpsXY,Stress',...
             'domain',[0 MaxStrain]);
-        ft = fittype({'x'});
+        ft = fittype({'x','1'});
         [ModEqn,ModGOF] = fit(-meanEpsXY,Stress',...
             ft,'Exclude',exclusions)
         Mod = coeffvalues(ModEqn);
         Modulus = Mod(1);
         ModCI = confint(ModEqn);
         ModulusCI = ModCI(:,1);
-%         [ModEqn2,ModGOF2] = fit(-meanEpsXY,AramisStress',...
-%             'poly2','Exclude',exclusions)
+        %         [ModEqn2,ModGOF2] = fit(-meanEpsXY,AramisStress',...
+        %             'poly2','Exclude',exclusions)
         % Shear stress/strain plot
         % Plot Stress vs. Strain
         if plotctrl == 1 || plotctrl == 2
-            figure('Name','Shear Stress/Strain','NumberTitle','off')
-            plot(ModEqn,-meanEpsXY,Stress)
+            figure('Name','Shear Stress-Strain','NumberTitle','off')
+            plot(ModEqn)
+            hold on
+            plot(-meanEpsXY,Stress,'-','MarkerSize',msize)
+            hold off
             %         hold on
             %         plot(ModEqn2,'g-')
             grid on
             x1 = xlabel('Shear Strain (rad)');
             y1 = ylabel('Stress (Pa)');
-            leg = legend('Data','Fit','Location','northwest');
+            leg = legend('Fit','Data','Location','northwest');
             set(gca,'FontName',font,'FontSize',fsize)
             set([y1 x1],'FontName',font,'FontSize',fsize)
             set(leg,'FontName',font,'FontSize',fsize)
+            
             Adjust = input('Would you like to adjust the fit? Yes(1) or No (0)\n');
             if Adjust == 1
-                usermax = input('Enter domain to fit. [xmin xmax]\n');
-                exclusions = excludedata(-meanEpsXY,Stress',...
-                    'domain',usermax);
+                usermaxx = input('Enter domain to fit. [xmin xmax]\n');
+                usermaxy = input('Enter domain to fit. [ymin ymax]\n Enter 0 if no vertical limits. \n');
+                if usermaxy ~= 0
+                    exclusions = excludedata(-meanEpsXY,Stress',...
+                        'box',[usermaxx usermaxy]);
+                else
+                    exclusions = excludedata(-meanEpsXY,Stress',...
+                        'domain',usermaxx);
+                end
                 [ModEqn,ModGOF] = fit(-meanEpsXY,Stress',...
                     ft,'Exclude',exclusions)
                 Mod = coeffvalues(ModEqn);
                 Modulus = Mod(1);
                 ModCI = confint(ModEqn);
                 ModulusCI = ModCI(:,1);
-                figure('Name','Shear Stress/Strain, Adjusted Fit','NumberTitle','off')
-                plot(ModEqn,-meanEpsXY,Stress)
-                %         hold on
-                %         plot(ModEqn2,'g-')
+                figure('Name','Shear Stress-Strain--Adjusted Fit','NumberTitle','off')
+                plot(ModEqn)
+                hold on
+                plot(-meanEpsXY,Stress,'-','MarkerSize',msize)
+                hold off
                 grid on
                 x1 = xlabel('Shear Strain (rad)');
                 y1 = ylabel('Stress (Pa)');
-                leg = legend('Data','Fit','Location','northwest');
+                leg = legend('Fit','Data','Location','northwest');
+                set(gca,'FontName',font,'FontSize',fsize)
+                set([y1 x1],'FontName',font,'FontSize',fsize)
+                set(leg,'FontName',font,'FontSize',fsize)
+            end
+        end
+    case 'minor'
+        % Average multiple strain guages for smoother data
+        for i = 1:length(minor)
+            minorFull(:,i) = minor{i};
+        end
+        meanminor = mean(minorFull,2);
+        Strain = meanminor;
+        MaxStrain = -meanminor(maxIndex);
+        exclusions = excludedata(-meanminor,Stress',...
+            'domain',[0 MaxStrain]);
+        ft = fittype({'x','1'});
+        [ModEqn,ModGOF] = fit(-meanminor,Stress',...
+            ft,'Exclude',exclusions)
+        Mod = coeffvalues(ModEqn);
+        Modulus = Mod(1)*100; %Strain given in percent
+        ModCI = confint(ModEqn);
+        ModulusCI = ModCI(:,1)*100; %Strain given in percent
+        %         [ModEqn2,ModGOF2] = fit(-meanEpsXY,AramisStress',...
+        %             'poly2','Exclude',exclusions)
+        % Shear stress/strain plot
+        % Plot Stress vs. Strain
+        if plotctrl == 1 || plotctrl == 2
+            figure('Name','Compressive Stress-Strain','NumberTitle','off')
+            plot(ModEqn)
+            hold on
+            plot(-meanminor,Stress,'-','MarkerSize',msize)
+            hold off
+            %         hold on
+            %         plot(ModEqn2,'g-')
+            grid on
+            x1 = xlabel('Compressive Strain (%)');
+            y1 = ylabel('Stress (Pa)');
+            leg = legend('Fit','Data','Location','northwest');
+            set(gca,'FontName',font,'FontSize',fsize)
+            set([y1 x1],'FontName',font,'FontSize',fsize)
+            set(leg,'FontName',font,'FontSize',fsize)
+            
+            Adjust = input('Would you like to adjust the fit? Yes(1) or No (0)\n');
+            if Adjust == 1
+                usermaxx = input('Enter domain to fit. [xmin xmax]\n');
+                usermaxy = input('Enter domain to fit. [ymin ymax]\n Enter 0 if no vertical limits. \n');
+                if usermaxy ~= 0
+                    exclusions = excludedata(-meanminor,Stress',...
+                        'box',[usermaxx usermaxy]);
+                else
+                    exclusions = excludedata(-meanminor,Stress',...
+                        'domain',usermaxx);
+                end
+                [ModEqn,ModGOF] = fit(-meanminor,Stress',...
+                    ft,'Exclude',exclusions)
+                Mod = coeffvalues(ModEqn);
+                Modulus = Mod(1)*100;   %Strain given in percent
+                ModCI = confint(ModEqn);
+                ModulusCI = ModCI(:,1)*100; %Strain given in percent
+                figure('Name','Compressive Stress-Strain--Adjusted Fit','NumberTitle','off')
+                plot(ModEqn)
+                hold on
+                plot(-meanminor,Stress,'-','MarkerSize',msize)
+                hold off
+                grid on
+                x1 = xlabel('Compressive Strain (%)');
+                y1 = ylabel('Stress (Pa)');
+                leg = legend('Fit','Data','Location','northwest');
                 set(gca,'FontName',font,'FontSize',fsize)
                 set([y1 x1],'FontName',font,'FontSize',fsize)
                 set(leg,'FontName',font,'FontSize',fsize)
@@ -156,7 +245,7 @@ end
 %% Figures
 if plotctrl == 2 || plotctrl == 3
     % Plot Load and displacement vs. time
-    figure('Name','Load/Displacement vs. Time','NumberTitle','off')
+    figure('Name','Load-Displacement vs Time','NumberTitle','off')
     h(1) = subplot(2,1,1);
     plot(Time,Load,'LineWidth',2)
     grid on
@@ -168,7 +257,7 @@ if plotctrl == 2 || plotctrl == 3
     set(get(h(2),'Xlabel'),'String','Time(s)')
     
     % Plot Load and displacement vs. time, clipped to region of interest
-    figure('Name','Load/Displacement vs. Time Clipped','NumberTitle','off')
+    figure('Name','Load-Displacement vs Time Clipped','NumberTitle','off')
     h(1) = subplot(2,1,1);
     plot(Time,Load,'LineWidth',2)
     grid on
@@ -187,7 +276,7 @@ if plotctrl == 2 || plotctrl == 3
     set(h(2),'YTickMode','Auto');
     
     % Plot Load vs. displacement
-    figure('Name','LVDT Displacement vs. Load','NumberTitle','off')
+    figure('Name','LVDT Displacement vs Load','NumberTitle','off')
     plot(LVDT,Load)
     grid on
     ylabel('Load (N)')
@@ -203,7 +292,7 @@ function [Time,TriggerTime,TriggerIndex,Load,LVDT,Pathname] = LabviewLoad
 
 % Use graphical picking to select the results file after being converted to
 % *.xlsx format.
-[File,Pathname] = uigetfile('C:\Doctoral Researach\Mechanical Testing\Radiation Recrystallization\Experiments\*.xlsx','Choose the Excel file');
+[File,Pathname] = uigetfile('C:\Users\David\Documents\MSU Research\Doctoral Work\Mechanical Testing\Radiation Recrystallization\PhD Work\*.xlsx','Choose the Excel file');
 xlsfile = fullfile(Pathname,File);
 Data = xlsread(xlsfile,'untitled');
 %Column 1 = Time (s)
@@ -368,7 +457,7 @@ for i = 1:length(Files)
     %% Allocate imported array to column variable names
     % VarName1 = cell2mat(rawNumericColumns(:, 1));
     Stage{i} = cell2mat(rawNumericColumns(:, 1));
-    Timems{i} = cell2mat(rawNumericColumns(:, 2));
+    Timems{i} = cell2mat(rawNumericColumns(:, 2))%*1000;
     major{i} = cell2mat(rawNumericColumns(:, 3));
     minor{i} = cell2mat(rawNumericColumns(:, 4));
     epsX{i} = cell2mat(rawNumericColumns(:, 5));

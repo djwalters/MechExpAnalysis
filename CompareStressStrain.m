@@ -60,19 +60,33 @@ PercChange = ((Modulus2-Modulus1)/Modulus1)*100;
 %% Set Plot Controls
 ebwidth = 0.1;  % Errorbar cap width
 font = 'Palatino Linotype';
-fsize = 11;
+fsize = 10;
 msize = 5;
 
 %% Plots
 % Plot stress strain curves together with linear fits
 switch userstrain
     case 'epsxy'
-        figure('Name','Shear Stress/Strain','NumberTitle','off')
+        figure('Name','Shear Stress-Strain','NumberTitle','off')
         plot(ModEqn1,'m-',-Strain1,Stress1,'b.')
         grid on
         hold on
         plot(ModEqn2,'r-.',-Strain2,Stress2,'k*')
         x1 = xlabel('Shear Strain (rad)');
+        y1 = ylabel('Stress (Pa)');
+        leg = legend('Non-Layered Data','Non-Layered Fit',...
+            'Layered Data','Layered Fit','Location','best');
+        set(gca,'FontName',font,'FontSize',fsize)
+        set([y1 x1],'FontName',font,'FontSize',fsize)
+        set(leg,'FontName',font,'FontSize',fsize)
+        axis('auto')
+    case 'minor'
+        figure('Name','Compressive Stress-Strain','NumberTitle','off')
+        plot(ModEqn1,'m-',-Strain1,Stress1,'b.')
+        grid on
+        hold on
+        plot(ModEqn2,'r-.',-Strain2,Stress2,'k*')
+        x1 = xlabel('Compressive Strain (%)');
         y1 = ylabel('Stress (Pa)');
         leg = legend('Non-Layered Data','Non-Layered Fit',...
             'Layered Data','Layered Fit','Location','best');
